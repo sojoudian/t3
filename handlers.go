@@ -28,30 +28,34 @@ type ConversionResponse struct {
 
 // GetCurrentTimeHandler returns the current time in Toronto and Tehran
 func GetCurrentTimeHandler(w http.ResponseWriter, r *http.Request) {
-	// Enable CORS headers for all origins during development
+	// Set CORS headers for browser compatibility
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	
-	// Load Toronto timezone
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
+	// Load location (timezone) information
 	torontoLoc, err := time.LoadLocation("America/Toronto")
 	if err != nil {
 		http.Error(w, "Error loading Toronto timezone: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	
-	// Load Tehran timezone
 	tehranLoc, err := time.LoadLocation("Asia/Tehran")
 	if err != nil {
 		http.Error(w, "Error loading Tehran timezone: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	
-	// Get current time
-	now := time.Now().UTC() // Use UTC as base for conversion
+	// Get current UTC time and convert to the respective time zones
+	now := time.Now().UTC()
 	torontoTime := now.In(torontoLoc)
 	tehranTime := now.In(tehranLoc)
 	
-	// Create response with formatted time strings
 	response := TimeResponse{
 		TorontoTime:    torontoTime.Format(time.RFC3339),
 		TehranTime:     tehranTime.Format(time.RFC3339),
@@ -59,7 +63,7 @@ func GetCurrentTimeHandler(w http.ResponseWriter, r *http.Request) {
 		TehranTimeStr:  tehranTime.Format("3:04 PM - January 2, 2006"),
 	}
 	
-	// Send JSON response
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Error encoding response: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -68,27 +72,29 @@ func GetCurrentTimeHandler(w http.ResponseWriter, r *http.Request) {
 
 // ConvertTimeHandler converts a given time between Toronto and Tehran
 func ConvertTimeHandler(w http.ResponseWriter, r *http.Request) {
-	// Enable CORS headers
+	// Set CORS headers for browser compatibility
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	
-	// Handle preflight OPTIONS request
-	if r.Method == http.MethodOptions {
+	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "Method not allowed, use POST", http.StatusMethodNotAllowed)
 		return
 	}
 	
+	// Parse request body
 	var req ConversionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	
+	// Load location (timezone) information
 	torontoLoc, err := time.LoadLocation("America/Toronto")
 	if err != nil {
 		http.Error(w, "Error loading Toronto timezone: "+err.Error(), http.StatusInternalServerError)
@@ -101,24 +107,31 @@ func ConvertTimeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
+	// Get today's date
 	now := time.Now().UTC()
+	year, month, day := now.Date()
+	
 	var sourceTime time.Time
 	var targetTime time.Time
 	var sourceCity, targetCity string
 	
-	// Create a time.Time object for the selected hour
+	// Create a time.Time object for the selected hour and minute
 	if req.City == "Toronto" {
 		sourceCity = "Toronto"
 		targetCity = "Tehran"
-		sourceTime = time.Date(now.Year(), now.Month(), now.Day(), req.Hour, req.Minute, 0, 0, torontoLoc)
+		// Create time in Toronto timezone
+		sourceTime = time.Date(year, month, day, req.Hour, req.Minute, 0, 0, torontoLoc)
+		// Convert to Tehran time
 		targetTime = sourceTime.In(tehranLoc)
 	} else if req.City == "Tehran" {
 		sourceCity = "Tehran"
 		targetCity = "Toronto"
-		sourceTime = time.Date(now.Year(), now.Month(), now.Day(), req.Hour, req.Minute, 0, 0, tehranLoc)
+		// Create time in Tehran timezone
+		sourceTime = time.Date(year, month, day, req.Hour, req.Minute, 0, 0, tehranLoc)
+		// Convert to Toronto time
 		targetTime = sourceTime.In(torontoLoc)
 	} else {
-		http.Error(w, "Invalid city", http.StatusBadRequest)
+		http.Error(w, "Invalid city: must be 'Toronto' or 'Tehran'", http.StatusBadRequest)
 		return
 	}
 	
@@ -133,6 +146,7 @@ func ConvertTimeHandler(w http.ResponseWriter, r *http.Request) {
 		TargetTime: targetTimeStr,
 	}
 	
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Error encoding response: "+err.Error(), http.StatusInternalServerError)
 		return
