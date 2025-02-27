@@ -21,6 +21,15 @@ function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   
+  // Helper function to get the base API URL
+  const getApiBaseUrl = () => {
+    // Check if we're running in development or production
+    if (process.env.NODE_ENV === 'development') {
+      return 'http://localhost:8080'; // Development backend URL
+    }
+    return ''; // In production, use relative URLs
+  };
+  
   // Fetch current times on component mount
   useEffect(() => {
     fetchCurrentTimes();
@@ -35,18 +44,31 @@ function App() {
   const fetchCurrentTimes = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8080/api/current-time');
+      console.log('Fetching current times...');
+      
+      const apiUrl = `${getApiBaseUrl()}/api/current-time`;
+      console.log('API URL:', apiUrl);
+      
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch current times');
+        throw new Error(`Failed to fetch current times: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
-      setCurrentTimes(data);
+      console.log('Received time data:', data);
+      
+      setCurrentTimes({
+        torontoTime: data.toronto_time || '',
+        tehranTime: data.tehran_time || '',
+        torontoTimeStr: data.toronto_time_str || 'Time not available',
+        tehranTimeStr: data.tehran_time_str || 'Time not available'
+      });
+      
       setError(null);
     } catch (err) {
-      setError('Failed to fetch current times. Please try again later.');
-      console.error(err);
+      console.error('Error fetching current times:', err);
+      setError(`Failed to fetch current times: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -75,7 +97,18 @@ function App() {
   
   const handleConvert = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/convert-time', {
+      setError(null);
+      console.log('Converting time...');
+      
+      const apiUrl = `${getApiBaseUrl()}/api/convert-time`;
+      console.log('API URL:', apiUrl);
+      console.log('Request data:', {
+        city: conversionData.sourceCity,
+        hour: conversionData.hour,
+        minute: conversionData.minute
+      });
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -88,18 +121,20 @@ function App() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to convert time');
+        const errorText = await response.text();
+        throw new Error(`Failed to convert time: ${response.status} ${response.statusText} - ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('Received conversion data:', data);
+      
       setConversionData({
         ...conversionData,
         result: data
       });
-      setError(null);
     } catch (err) {
-      setError('Failed to convert time. Please try again later.');
-      console.error(err);
+      console.error('Error converting time:', err);
+      setError(`Failed to convert time: ${err.message}`);
     }
   };
   
@@ -156,21 +191,19 @@ function App() {
               <Col md={3} className="mb-3">
                 <Form.Group>
                   <Form.Label>Select City</Form.Label>
-                  <Form.Control 
-                    as="select" 
+                  <Form.Select 
                     value={conversionData.sourceCity} 
                     onChange={handleCityChange}
                   >
                     <option value="Toronto">Toronto</option>
                     <option value="Tehran">Tehran</option>
-                  </Form.Control>
+                  </Form.Select>
                 </Form.Group>
               </Col>
               <Col md={3} className="mb-3">
                 <Form.Group>
                   <Form.Label>Hour</Form.Label>
-                  <Form.Control 
-                    as="select" 
+                  <Form.Select 
                     value={conversionData.hour} 
                     onChange={handleHourChange}
                   >
@@ -179,14 +212,13 @@ function App() {
                         {hour.toString().padStart(2, '0')}
                       </option>
                     ))}
-                  </Form.Control>
+                  </Form.Select>
                 </Form.Group>
               </Col>
               <Col md={3} className="mb-3">
                 <Form.Group>
                   <Form.Label>Minute</Form.Label>
-                  <Form.Control 
-                    as="select" 
+                  <Form.Select 
                     value={conversionData.minute} 
                     onChange={handleMinuteChange}
                   >
@@ -195,7 +227,7 @@ function App() {
                         {minute.toString().padStart(2, '0')}
                       </option>
                     ))}
-                  </Form.Control>
+                  </Form.Select>
                 </Form.Group>
               </Col>
               <Col md={3} className="mb-3">
@@ -210,8 +242,8 @@ function App() {
             <Alert variant="success" className="mt-3">
               <h5 className="mb-2">Conversion Result:</h5>
               <p className="mb-0">
-                {conversionData.result.sourceTime} in {conversionData.result.sourceCity} is{' '}
-                <strong>{conversionData.result.targetTime}</strong> in {conversionData.result.targetCity}
+                {conversionData.result.source_time} in {conversionData.result.source_city} is{' '}
+                <strong>{conversionData.result.target_time}</strong> in {conversionData.result.target_city}
               </p>
             </Alert>
           )}
